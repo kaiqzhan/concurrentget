@@ -1,42 +1,43 @@
 package main
 
 import (
+	"io"
 	"log"
 	"net/http"
 	"sync"
-	"time"
 )
 
 const (
 	URL      = "http://104.45.179.41/"
-	N_THREAD = 100
+	N_THREAD = 1000
 	N_LOOP   = 10
 )
 
 func main() {
-	tr := &http.Transport{
-		MaxIdleConns:       10,
-		IdleConnTimeout:    30 * time.Second,
-		DisableCompression: true,
-	}
-
-	client := &http.Client{Transport: tr}
-
 	var wg sync.WaitGroup
 
 	for id := 0; id < N_THREAD; id++ {
 		id := id
 		wg.Add(1)
 		go func(id int) {
+			defer wg.Done()
+
+			tr := &http.Transport{
+				DisableCompression: true,
+				MaxConnsPerHost:    1,
+			}
+			client := &http.Client{Transport: tr}
+
 			for i := 0; i < N_LOOP; i++ {
 				resp, err := client.Get(URL)
 				if err != nil {
-					log.Fatalln(err)
+					log.Println(err)
+					return // terminate goroutine
 				}
 				defer resp.Body.Close()
-				log.Printf("goroutine id: %4d, index: %4d, status: %d, content length: %d\n", id, i, resp.StatusCode, resp.ContentLength)
+				io.Copy(io.Discard, resp.Body) // necessary for connection to be reused
+				log.Printf("goroutine id: %4d, index: %2d, status: %d, content length: %d\n", id+1, i+1, resp.StatusCode, resp.ContentLength)
 			}
-			wg.Done()
 		}(id)
 	}
 
